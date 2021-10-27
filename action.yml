@@ -1,5 +1,5 @@
-name: 'Hello World'
-description: 'Greet someone'
+name: 'b-nova-golang-build-and-deploy-action'
+description: 'Builds an docker image from your golang code and push it to AWS ECR. Deploy the application to a kubernetes cluster'
 inputs:
   projectName:  # id of input
     description: 'The name of the project (must also be the name of your ECR repository)'

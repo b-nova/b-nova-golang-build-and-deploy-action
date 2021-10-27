@@ -1,0 +1,50 @@
+name: 'Hello World'
+description: 'Greet someone'
+inputs:
+  projectName:  # id of input
+    description: 'The name of the project (must also be the name of your ECR repository)'
+    required: true
+    default: ''
+  clusterName: # id of input
+    description: 'The name of your kubernetes cluster'
+    required: true
+    default: ''
+runs:
+  using: "composite"
+  steps:
+    - uses: actions/checkout@v2
+
+    - name: Configure AWS credentials
+      uses: aws-actions/configure-aws-credentials@v1
+      with:
+        aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+        aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+        aws-region: eu-central-1
+
+    - name: Login to Amazon ECR
+      id: login-ecr
+      uses: aws-actions/amazon-ecr-login@v1
+
+    - name: Build, tag, and push image to Amazon ECR
+      id: build-image
+      env:
+        ECR_REGISTRY: ${{ steps.login-ecr.outputs.registry }}
+        ECR_REPOSITORY: ${{ inputs.prjectName }}
+        IMAGE_TAG: ${{ inputs.prjectName }}-${{ github.sha }}
+      run: |
+        docker build --build-arg GOLANG_GITHUB_ACCESS_TOKEN=${{ secrets.GOLANG_GITHUB_ACCESS_TOKEN }} --build-arg GOLANG_GITHUB_USERNAME=${{ secrets.GOLANG_GITHUB_USERNAME }} -t $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG .
+        docker push $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG
+        echo "::set-output name=IMAGE_TAG::$IMAGE_TAG"
+    - name: Update deployment file
+      run: TAG=${{ steps.build-image.outputs.IMAGE_TAG }} && sed -i 's|<IMAGE>|914541419452.dkr.ecr.eu-central-1.amazonaws.com/${{ inputs.prjectName }}:'${TAG}'|' $GITHUB_WORKSPACE/kubernetes/inventory.yaml
+
+    - name: Install doctl
+      uses: digitalocean/action-doctl@v2
+      with:
+        token: ${{ secrets.DIGITALOCEAN_GL_ACCESS_TOKEN }}
+
+    - name: Save DigitalOcean kubeconfig with short-lived credentials
+      run: doctl kubernetes cluster kubeconfig save --expiry-seconds 600 ${{ inputs.clusterName }}
+
+    - name: Deploy to DigitalOcean Kubernetes
+      run: kubectl apply -f $GITHUB_WORKSPACE/kubernetes/inventory.yaml
